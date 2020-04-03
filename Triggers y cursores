@@ -1,0 +1,63 @@
+/*
+*
+*   TRIGGERS
+*   Y
+*   CURSORES
+*
+*/
+
+CREATE OR REPLACE TRIGGER LimitePedidosMoto
+BEFORE INSERT ON PedidosDomicilio
+FOR EACH ROW
+DECLARE
+    numPedidos INTEGER;
+    tipoVehiculo VARCHAR2(5);
+BEGIN
+    SELECT max(tipoVehiculo) INTO tipoVehiculo FROM Repartos NATURAL JOIN Vehiculos WHERE OID_Reparto=:NEW.OID_Reparto;
+    SELECT COUNT(*) INTO numPedidos FROM PedidosDomicilio WHERE OID_Reparto=:NEW.OID_Reparto;
+    IF(numPedidos>4 AND tipoVehiculo = 'Moto') THEN
+        raise_application_error(-20600,:NEW.ID_Pedido||'Una moto no puede llevar más de 4 pedidos');
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER FaltanIngredientes
+BEFORE INSERT ON LineasPedidos
+FOR EACH ROW
+DECLARE
+    CURSOR c IS SELECT * FROM Ingredientes WHERE OID_Ingrediente IN
+    (SELECT OID_Ingrediente FROM Engloban WHERE OID_Producto=
+    (SELECT MAX(OID_Producto) FROM Productos WHERE OID_Producto=:NEW.OID_Producto));
+BEGIN
+    FOR s IN c LOOP
+    IF s.stock=0
+    THEN raise_application_error(-20601,'No queda stock de algunos de los ingredientes');
+    END IF;
+    END LOOP;
+END;
+/
+
+CREATE OR REPLACE TRIGGER FechaRepartos
+BEFORE INSERT OR UPDATE ON Repartos
+FOR EACH ROW
+BEGIN
+    IF(:NEW.horaInicio>=:NEW.horaFin)
+        THEN raise_application_error(-20602,'La fecha de fin no puede ser anterior a la de inicio.');
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER DemasiadosRepartos
+BEFORE INSERT ON Repartos
+FOR EACH ROW
+DECLARE
+    numRepartos INTEGER;
+BEGIN
+    SELECT COUNT(*) 
+    INTO numRepartos FROM Repartos 
+    WHERE horaInicio BETWEEN :NEW.horaInicio AND (:NEW.horaInicio+1/24);
+    IF (numRepartos>10)
+        THEN raise_application_error(-20603,'Demasiados repartos para la proxima hora.');
+    END IF;
+END;
+/
